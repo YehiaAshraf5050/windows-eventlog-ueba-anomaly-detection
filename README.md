@@ -34,6 +34,5 @@ Windows Event Logs and Sysmon
 ```text
 configs/      Sanitized Winlogbeat, Logstash, and n8n templates
 docs/         Full documentation and methodology walkthrough
-examples/     Small sanitized sample outputs
 scripts/      Sanitized Windows automation scripts
 src/          Source code for data collection, preprocessing, training, detection, and ingestion
