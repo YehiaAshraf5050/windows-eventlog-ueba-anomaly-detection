@@ -1,0 +1,7 @@
+pandas
+numpy
+scikit-learn
+joblib
+elasticsearch
+requests
+python-dateutil

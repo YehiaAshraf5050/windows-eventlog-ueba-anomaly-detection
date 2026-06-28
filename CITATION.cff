@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+title: "Windows Event Log UEBA Anomaly Detection System"
+message: "If you use this architecture, code, configuration templates, dataset-builder design, SOC enrichment layer, or documentation, please cite this work."
+authors:
+  - family-names: "Mostafa"
+    given-names: "Yehia"
+version: 1.0.0
+date-released: 2026-06-28
+url: "https://github.com/<your-github-username>/windows-eventlog-ueba-anomaly-detection"

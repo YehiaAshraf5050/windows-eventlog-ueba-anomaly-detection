@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Secrets and private configs
+config.py
+.env
+secrets/
+*.key
+*.pem
+*.crt
+*.p12
+credentials.json
+token.json
+
+# Private/local outputs
+logs/
+backups/
+model_registry/
+*.joblib
+
+# Private datasets/results
+behavior_dataset.csv
+model_results.csv
+anomalies.csv
+*.csv
+
+# Allow sanitized example CSVs only
+!examples/*.csv
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
