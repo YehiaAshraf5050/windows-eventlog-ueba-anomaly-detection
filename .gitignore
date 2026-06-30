@@ -1,37 +1,28 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
-env/
-
-# Secrets and private configs
+# Local secrets
 config.py
 .env
-secrets/
-*.key
-*.pem
-*.crt
-*.p12
-credentials.json
-token.json
 
-# Private/local outputs
-logs/
-backups/
-model_registry/
-*.joblib
+# Python cache
+__pycache__/
+*.pyc
 
-# Private datasets/results
-behavior_dataset.csv
-model_results.csv
-anomalies.csv
+# Local datasets and generated outputs
 *.csv
+*.xlsx
+*.joblib
+*.pkl
 
-# Allow sanitized example CSVs only
-!examples/*.csv
+# Model registry and generated results
+src/training_testing/model_registry/
+src/training_testing/model_results.csv
+src/training_testing/anomalies.csv
+src/preprocessing/behavior_dataset.csv
 
-# OS/editor
+# Logs
+*.log
+logs/
+
+# OS/editor files
 .DS_Store
 Thumbs.db
 .vscode/
