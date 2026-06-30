@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata from this file."
 title: "Windows Event Log UEBA Anomaly Detection System"
 version: "1.0.4"
-doi: "10.5281/zenodo.21033242"
+doi: "10.5281/zenodo.21080631"
 date-released: "2026-06-30"
 license: "MIT"
 

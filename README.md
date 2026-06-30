@@ -11,12 +11,12 @@ This repository is designed as a reproducibility package. It contains source cod
 
 This repository is archived on Zenodo:
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21033241.svg)](https://doi.org/10.5281/zenodo.21033241)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21080631.svg)](https://doi.org/10.5281/zenodo.21080631)
 
 To cite all versions of this reproducibility package, use the concept DOI:
 
 ```text
-10.5281/zenodo.21033241
+10.5281/zenodo.21080631
 ````
 
 A new Zenodo version DOI may be generated when a new GitHub release is archived. The concept DOI remains the stable citation target for the complete software package across versions.
@@ -410,7 +410,7 @@ If you use this architecture, code, configuration templates, dataset-builder des
   title = {Windows Event Log UEBA Anomaly Detection System},
   year = {2026},
   version = {1.0.0},
-  doi = {10.5281/zenodo.21033241},
+  doi = {10.5281/zenodo.21080631},
   url = {https://github.com/<OWNER>/<REPOSITORY>}
 }
 ```
