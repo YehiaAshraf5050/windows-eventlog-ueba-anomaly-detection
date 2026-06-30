@@ -22,10 +22,11 @@ RESULTS_PATH = os.path.join(BASE_DIR, "model_results.csv")
 ARTIFACT_PATH = os.path.join(BASE_DIR, "model_registry", "model_artifacts_latest.joblib")
 # "latest" means score only the latest available 10-minute window.
 # "all" means score the whole behavior_dataset.csv.
+# "new" means score only rows that are not already in model_results.csv.
 #
 # Use "all" the first time if you want model_results.csv for all old rows.
-# Then switch it back to "latest" for real-time use.
-SCORING_MODE = "all"
+# Then switch it back to "new" for operational use.
+SCORING_MODE = "new"
 # ==============================================================================
 # ENRICHMENT CONFIGURATION
 # ==============================================================================
@@ -304,9 +305,9 @@ def get_model_priority(row):
         points += 3
         reasons.append("Isolation Forest and LOF both flagged the window")
 
-    elif row.get("final_anomaly", 0) == 1:
+    elif row.get("ensemble_votes", 0) >= 1:
         points += 1
-        reasons.append("one model or ensemble score flagged the window")
+        reasons.append("one model flagged the window")
 
     ensemble_score = row.get("ensemble_score", 0)
 
@@ -344,6 +345,107 @@ def get_feature_priority(row):
 
     return points, reasons
 
+def has_strong_security_evidence(row):
+    """
+    Decide whether a behavior window contains strong security evidence.
+
+    These rules are used to prevent weak single-model statistical deviations
+    from becoming final SOC anomalies unless they contain security-relevant
+    behavior.
+    """
+
+    return (
+        row.get("failed_login_count", 0) >= 10
+        or row.get("suspicious_file_creation_count", 0) >= 20
+        or (
+            row.get("powershell_exec_count", 0) >= 50
+            and row.get("cmd_exec_count", 0) >= 50
+        )
+        or (
+            row.get("shell_ratio", 0) >= 0.50
+            and row.get("process_creation_count", 0) >= 50
+        )
+        or row.get("suspicious_parent_count", 0) >= 3
+    )
+
+
+def calculate_preliminary_priority(row):
+    """
+    Calculate priority score before the final anomaly decision.
+
+    This is needed because the stricter final decision uses priority-like
+    security context to avoid promoting weak model-only outliers.
+    """
+
+    model_points, _ = get_model_priority(row)
+    feature_points, _ = get_feature_priority(row)
+
+    return model_points + feature_points
+
+
+def apply_strict_final_decision(results_df):
+    """
+    Replace the loose final_anomaly decision with a stricter SOC-oriented rule.
+
+    Final anomaly becomes 1 only if:
+    1. IF and LOF both agree and the row has enough priority/security context.
+    OR
+    2. At least one model flags the row and strong security evidence exists.
+
+    This keeps controlled security-relevant behavior detectable while reducing
+    weak single-model anomaly promotion.
+    """
+
+    results_df = results_df.copy()
+
+    final_decisions = []
+    detection_reasons = []
+    severities = []
+
+    for _, row in results_df.iterrows():
+
+        model_agreement = row.get("ensemble_votes", 0) >= 2
+        one_model_flagged = row.get("ensemble_votes", 0) >= 1
+
+        strong_security_evidence = has_strong_security_evidence(row)
+        preliminary_priority = calculate_preliminary_priority(row)
+
+        high_priority_model_agreement = (
+            model_agreement
+            and preliminary_priority >= 6
+        )
+
+        model_supported_security_evidence = (
+            one_model_flagged
+            and strong_security_evidence
+        )
+
+        if high_priority_model_agreement:
+            final_decisions.append(1)
+            detection_reasons.append("model_vote_high_priority")
+            severities.append("high")
+
+        elif model_supported_security_evidence:
+            final_decisions.append(1)
+            detection_reasons.append("security_rule_model_supported")
+
+            if preliminary_priority >= 9:
+                severities.append("high")
+            elif preliminary_priority >= 6:
+                severities.append("medium")
+            else:
+                severities.append("low")
+
+        else:
+            final_decisions.append(0)
+            detection_reasons.append("normal")
+            severities.append("normal")
+
+    results_df["final_anomaly"] = final_decisions
+    results_df["detection_reason"] = detection_reasons
+    results_df["severity"] = severities
+
+    return results_df
 
 def get_priority_level(score):
     """
@@ -537,9 +639,12 @@ new_results = score_rows(
     lof=lof,
     feature_cols=feature_cols,
     score_ranges=score_ranges
-
 )
-# Add SOC-oriented enrichment fields after ML scoring.
+
+# Apply stricter SOC-oriented final decision after ML scoring.
+new_results = apply_strict_final_decision(new_results)
+
+# Add SOC-oriented enrichment fields after the final anomaly decision.
 new_results = enrich_detection_results(new_results)
 
 # Sort so the most suspicious rows appear first in the terminal.
