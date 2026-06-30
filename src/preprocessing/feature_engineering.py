@@ -15,6 +15,7 @@ from data_collection.pull import get_logs
 # ==============================================================================
 
 LOG_PULL_SIZE = 9000
+LOG_LOOKBACK = "now-1d"
 WINDOW_SIZE = "10min"
 LOCAL_TIMEZONE = "Africa/Cairo"
 
@@ -27,7 +28,7 @@ OUTPUT_CSV_PATH = os.path.join(
 # If some Windows logon events do not contain a real username, they can be mapped
 # to a known lab user for a controlled single-user environment.
 # Change these values locally if needed. Keep generic values in the public repo.
-ENABLE_SINGLE_USER_LAB_FALLBACK = True
+ENABLE_SINGLE_USER_LAB_FALLBACK = False
 LAB_HOSTNAME = "host_01"
 LAB_PRIMARY_USER = "user_01"
 
@@ -193,7 +194,7 @@ def get_suspicious_file_flag(target_filename):
 # STEP 1: PULL RAW LOGS FROM ELASTICSEARCH
 # ==============================================================================
 
-logs = get_logs(size=LOG_PULL_SIZE)
+logs = get_logs(size=LOG_PULL_SIZE, lookback=LOG_LOOKBACK)
 
 rows = []
 
