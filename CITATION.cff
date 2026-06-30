@@ -1,26 +1,24 @@
 cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
 title: "Windows Event Log UEBA Anomaly Detection System"
-message: "If you use this architecture, code, configuration templates, dataset-builder design, SOC enrichment layer, controlled replay method, or documentation, please cite this work."
-authors:
+version: "1.0.4"
+doi: "10.5281/zenodo.21033242"
+date-released: "2026-06-30"
+license: "MIT"
 
-* family-names: "Mostafa"
-  given-names: "Yehia"
-  version: 1.0.0
-  date-released: 2026-06-29
-  doi: "10.5281/zenodo.21033241"
-  url: "https://github.com/YehiaAshraf5050/windows-eventlog-ueba-anomaly-detection"
-  license: "MIT"
-  repository-code: "https://github.com/YehiaAshraf5050/windows-eventlog-ueba-anomaly-detection"
-  keywords:
-* UEBA
-* cybersecurity
-* Windows Event Logs
-* Sysmon
-* Elasticsearch
-* Logstash
-* anomaly detection
-* machine learning
-* SOC
-* n8n
-* Isolation Forest
-* Local Outlier Factor
+authors:
+  - family-names: "Mostafa"
+    given-names: "Yehia"
+
+url: "https://github.com/YehiaAshraf5050/windows-eventlog-ueba-anomaly-detection"
+repository-code: "https://github.com/YehiaAshraf5050/windows-eventlog-ueba-anomaly-detection"
+keywords:
+  - "UEBA"
+  - "Windows Event Logs"
+  - "Sysmon"
+  - "Anomaly Detection"
+  - "Cybersecurity"
+  - "Elasticsearch"
+  - "Logstash"
+  - "Isolation Forest"
+  - "Local Outlier Factor"
