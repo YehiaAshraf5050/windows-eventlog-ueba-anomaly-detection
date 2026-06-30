@@ -1,10 +1,9 @@
+````markdown
 # Full Project Walkthrough
 
-This document provides the full technical walkthrough for the **Windows Event Log UEBA Anomaly Detection System**. It explains the system architecture, ELK-based telemetry pipeline, data collection layer, dataset-building process, feature engineering, unsupervised anomaly detection, SOC enrichment, Elasticsearch alert indexing, n8n alerting, controlled replay validation, and scheduled automation.
+This document provides the full technical walkthrough for the **Windows Event Log UEBA Anomaly Detection System**. It explains the current system architecture, ELK-based telemetry pipeline, data collection layer, dataset-building process, feature engineering, unsupervised anomaly detection, strict SOC decision logic, SOC enrichment, Elasticsearch alert indexing, n8n alerting, controlled replay validation, and scheduled automation.
 
-The goal of this walkthrough is to make the project understandable and reproducible for readers who want to study, rebuild, or extend the architecture.
-
-Shorter focused documents are also provided in the `docs/` folder, including architecture, feature dictionary, model design, SOC enrichment, evaluation, controlled replay validation, and automation setup.
+The goal of this walkthrough is to make the project understandable and reproducible for readers who want to rebuild or extend the architecture in their own lab environment.
 
 ---
 
@@ -12,9 +11,9 @@ Shorter focused documents are also provided in the `docs/` folder, including arc
 
 This project implements a Windows endpoint User and Entity Behavior Analytics pipeline for detecting abnormal user-host behavior using Windows Event Logs, Sysmon telemetry, Elasticsearch, Python feature engineering, unsupervised machine learning, and n8n alerting.
 
-The system converts raw Windows/Sysmon events into 10-minute user-host behavior windows. Each behavior window is scored by an unsupervised anomaly detection ensemble using Isolation Forest and Local Outlier Factor. Final anomalies are enriched with SOC-oriented investigation metadata, priority scoring, top feature explanations, MITRE ATT&CK-aligned behavioral indicators, and raw-log investigation queries.
+The system converts raw Windows/Sysmon events into 10-minute user-host behavior windows. Each behavior window is scored by an unsupervised anomaly detection ensemble using Isolation Forest and Local Outlier Factor. The scored rows are then passed through a strict SOC-oriented final decision layer before final anomalies are enriched with investigation metadata.
 
-The final output is an enriched anomaly record stored in an Elasticsearch alert index and sent to n8n for SOC-style evidence-pack email notification.
+The final output is an enriched anomaly record stored in an Elasticsearch alert index and optionally sent to n8n for SOC-style evidence-pack notification.
 
 ---
 
@@ -26,13 +25,14 @@ The project contributes the following technical components:
 2. A data collection layer that retrieves raw telemetry from Elasticsearch instead of relying on manual CSV exports.
 3. A dataset-builder layer that converts raw endpoint events into 10-minute user-host behavior windows.
 4. A security-focused behavioral feature schema covering authentication, credential activity, process execution, shell usage, parent-child process behavior, network activity, file creation, and time context.
-5. A refined unsupervised anomaly detection ensemble using Isolation Forest and Local Outlier Factor.
-6. A comparative model analysis that removed One-Class SVM because it produced excessive anomaly flags.
-7. A SOC-oriented enrichment layer that adds priority score, priority level, priority reason, top features, investigation query, raw index, and MITRE ATT&CK-aligned behavioral indicators.
+5. An unsupervised anomaly detection ensemble using Isolation Forest and Local Outlier Factor.
+6. A strict SOC-oriented final decision layer that reduces weak single-model anomaly promotion.
+7. A SOC enrichment layer that adds priority score, priority level, priority reason, top features, raw-log investigation query, raw index, and MITRE ATT&CK-aligned behavioral indicators.
 8. An Elasticsearch anomaly index that stores compact investigation records for SOC review.
-9. An n8n alerting workflow that generates SOC-style evidence-pack email summaries.
-10. A controlled replay script that generates temporary suspicious-looking behavior for validation.
-11. A scheduled automation design using Windows Task Scheduler, Docker Desktop, VMware, SSH, and batch files.
+9. An n8n alerting workflow that can generate SOC-style evidence-pack summaries.
+10. A controlled replay script that generates repeatable suspicious-looking endpoint behavior for validation.
+11. A scheduled automation design using Windows Task Scheduler, Docker Desktop, VM startup/shutdown scripts, SSH, and batch files.
+12. Sanitized configuration templates for reproducible deployment without exposing private runtime values.
 
 ---
 
@@ -52,35 +52,36 @@ Windows Event Logs and Sysmon
 → model_artifacts_latest.joblib
 → detect_anomaly.py
 → model_results.csv
+→ strict SOC decision layer
 → SOC enrichment layer
 → extract_anomalies.py
 → anomalies.csv
 → send_anomalies_to_elastic.py
 → ueba-anomalies Elasticsearch index
 → n8n Webhook
-→ AI Agent evidence-pack summary
-→ Gmail SOC alert
-```
+→ SOC evidence-pack summary
+→ SOC analyst review
+````
 
 ## 3.1 Main Components
 
-| Component                      | Purpose                                                      |
-| ------------------------------ | ------------------------------------------------------------ |
-| Windows Event Logs / Sysmon    | Endpoint telemetry source                                    |
-| Winlogbeat                     | Forwards Windows logs                                        |
-| Logstash                       | Receives and forwards logs to Elasticsearch                  |
-| Elasticsearch raw index        | Stores original Windows/Sysmon telemetry                     |
-| `pull.py`                      | Retrieves raw telemetry from Elasticsearch                   |
-| `feature_engineering.py`       | Builds 10-minute user-host behavior windows                  |
-| `behavior_dataset.csv`         | ML-ready behavior dataset                                    |
-| `train_model.py`               | Trains scaler, Isolation Forest, and LOF                     |
-| `detect_anomaly.py`            | Scores behavior rows and enriches final anomalies            |
-| `model_results.csv`            | Full scoring output, including normal and anomaly rows       |
-| `extract_anomalies.py`         | Extracts final anomaly rows                                  |
-| `anomalies.csv`                | Alert-ready investigation queue                              |
-| `send_anomalies_to_elastic.py` | Stores anomalies in Elasticsearch and sends n8n batch alerts |
-| `ueba-anomalies`               | Dedicated alert index for SOC review                         |
-| n8n                            | Sends SOC-style email notification                           |
+| Component                      | Purpose                                                                                   |
+| ------------------------------ | ----------------------------------------------------------------------------------------- |
+| Windows Event Logs / Sysmon    | Endpoint telemetry source                                                                 |
+| Winlogbeat                     | Forwards Windows logs                                                                     |
+| Logstash                       | Receives and routes logs to Elasticsearch                                                 |
+| Elasticsearch raw index        | Stores original Windows/Sysmon telemetry                                                  |
+| `pull.py`                      | Retrieves raw telemetry from Elasticsearch                                                |
+| `feature_engineering.py`       | Builds 10-minute user-host behavior windows                                               |
+| `behavior_dataset.csv`         | ML-ready behavior dataset                                                                 |
+| `train_model.py`               | Trains scaler, Isolation Forest, and LOF                                                  |
+| `detect_anomaly.py`            | Scores behavior rows, applies the strict SOC decision layer, and enriches final anomalies |
+| `model_results.csv`            | Full scoring output, including normal and anomaly rows                                    |
+| `extract_anomalies.py`         | Extracts final anomaly rows                                                               |
+| `anomalies.csv`                | Alert-ready investigation queue                                                           |
+| `send_anomalies_to_elastic.py` | Stores anomalies in Elasticsearch and sends n8n batch alerts                              |
+| `ueba-anomalies`               | Dedicated alert index for SOC review                                                      |
+| n8n                            | Optional evidence-pack alerting workflow                                                  |
 
 ---
 
@@ -94,24 +95,55 @@ Elasticsearch stores both raw telemetry and enriched anomaly records.
 
 Two main indices are used:
 
-| Index                       | Purpose                                 |
-| --------------------------- | --------------------------------------- |
-| `winlogbeat-nileuniversity` | Raw Windows/Sysmon telemetry            |
-| `ueba-anomalies`            | Enriched anomaly records for SOC review |
+| Index                 | Purpose                                                                        |
+| --------------------- | ------------------------------------------------------------------------------ |
+| `winlogbeat-whatever` | Generic raw Windows/Sysmon telemetry index used by the reproducibility package |
+| `ueba-anomalies`      | Enriched anomaly records for SOC review                                        |
 
 The raw index stores detailed endpoint events, while the anomaly index stores summarized investigation records created by the ML pipeline.
 
-## 4.2 Logstash
+The raw index name is configurable through `config.py`:
 
-Although Winlogbeat can send logs directly to Elasticsearch, Logstash was retained as an intermediate ingestion layer. This provides future flexibility for parsing, filtering, normalization, enrichment, and routing without modifying the endpoint collection layer.
-
-A reusable Logstash configuration template is provided in:
-
-```text
-configs/logstash-winlogbeat.template.conf
+```python
+RAW_INDEX_NAME = "winlogbeat-whatever"
 ```
 
-This template receives Beats traffic on port `5044` and forwards it to Elasticsearch.
+A user reproducing the project can replace this with any local Elasticsearch index name.
+
+## 4.2 Logstash
+
+Logstash is used as the ingestion and routing layer between Winlogbeat and Elasticsearch.
+
+The final recommended setup uses **one active Beats pipeline only**. This avoids duplicate indexing and ensures that Winlogbeat events are routed consistently into the configured raw telemetry index.
+
+The sanitized Logstash template is:
+
+```text
+configs/logstash-single-active-beats-pipeline.template.conf
+```
+
+The template receives Beats traffic on port `5044`, routes Winlogbeat events to the configured Windows telemetry index, and optionally routes Filebeat events to separate daily indices.
+
+Recommended operational rule:
+
+```text
+Keep only one active Beats input pipeline on port 5044.
+Disable old or duplicate Logstash configs by renaming them with a .disabled suffix.
+```
+
+Example:
+
+```bash
+sudo mv /etc/logstash/conf.d/winlogbeat.conf /etc/logstash/conf.d/winlogbeat.conf.disabled
+```
+
+Then test and restart Logstash:
+
+```bash
+sudo /usr/share/logstash/bin/logstash --path.settings /etc/logstash -t
+sudo systemctl restart logstash
+sudo systemctl status logstash
+```
 
 ## 4.3 Winlogbeat
 
@@ -123,7 +155,7 @@ A reusable Winlogbeat configuration template is provided in:
 configs/winlogbeat.template.yml
 ```
 
-The configuration includes Windows Security, System, Application, and Sysmon event channels.
+The configuration includes Windows Security, System, Application, Sysmon, and optional PowerShell event channels.
 
 ---
 
@@ -131,14 +163,14 @@ The configuration includes Windows Security, System, Application, and Sysmon eve
 
 The project separates implementation logic from environment-specific values. This makes the repository reusable across different machines, networks, and lab environments.
 
-Instead of hardcoding local credentials, IP addresses, or webhook URLs directly into the code, the project uses configuration templates.
+Instead of hardcoding local credentials, private IP addresses, webhook URLs, hostnames, or local file paths directly into the code, the project uses configuration templates.
 
 ## 5.1 Configuration Template
 
 The repository includes:
 
 ```text
-src/data_collection/config.template.py
+config.template.py
 ```
 
 This file defines the required configuration variables:
@@ -155,6 +187,23 @@ VERIFY_CERTS
 
 A user who wants to reproduce the project can copy the template into a private `config.py` file and fill in their own local values.
 
+Example local configuration:
+
+```python
+ELASTIC_HOST = "https://<ELASTICSEARCH_HOST>:9200"
+ELASTIC_USER = "<ELASTIC_USERNAME>"
+ELASTIC_PASSWORD = "<ELASTIC_PASSWORD>"
+
+RAW_INDEX_NAME = "winlogbeat-whatever"
+ANOMALY_INDEX_NAME = "ueba-anomalies"
+
+N8N_WEBHOOK_PRODUCTION_URL = "http://<N8N_HOST>:5678/webhook/<WEBHOOK_ID>"
+
+VERIFY_CERTS = False
+```
+
+The private `config.py` file should never be committed.
+
 ## 5.2 Why Templates Are Used
 
 Configuration templates provide two benefits:
@@ -162,7 +211,7 @@ Configuration templates provide two benefits:
 1. **Reproducibility:** readers can see exactly which configuration values are needed.
 2. **Portability:** the same code can run in different environments by changing only the local configuration file.
 
-This design also keeps the source code independent from one specific lab machine or network setup.
+This design keeps the source code independent from one specific lab machine, username, network, or organization.
 
 ---
 
@@ -172,7 +221,7 @@ The data collection layer retrieves raw Windows/Sysmon events from Elasticsearch
 
 ## 6.1 Purpose of `pull.py`
 
-`pull.py` prevents the project from depending on manual CSV exports from Kibana. Instead, it programmatically connects to Elasticsearch, queries the raw telemetry index, and provides raw event records to the dataset-builder layer.
+`pull.py` prevents the project from depending on manual CSV exports from Kibana. Instead, it programmatically connects to Elasticsearch, queries the configured raw telemetry index, and provides raw event records to the dataset-builder layer.
 
 The data flow is:
 
@@ -190,8 +239,6 @@ This makes the dataset construction process more reproducible because raw teleme
 
 `pull.py` handles retrieval.
 `feature_engineering.py` handles transformation.
-
-This separation makes the pipeline easier to understand and maintain:
 
 | Layer           | Script                   | Responsibility                                       |
 | --------------- | ------------------------ | ---------------------------------------------------- |
@@ -238,20 +285,26 @@ These columns are kept for interpretation and investigation, but they are not us
 | File behavior       | `file_creation_count`, `suspicious_file_creation_count`, `file_per_process`                  | Detect file creation bursts and suspicious file staging |
 | Time context        | `activity_hour`, `weekend_activity`                                                          | Add temporal context                                    |
 
-## 7.3 Dataset Engineering Challenges
+## 7.3 Event Parsing Logic
 
-During development, several engineering issues had to be solved to make the dataset meaningful. These are included because they explain why the final feature engineering design is structured the way it is.
+The dataset builder extracts values from Windows and Sysmon fields that may differ by event type.
 
-| Challenge                                                 | Resolution                                                           | Result                                    |
-| --------------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------- |
-| Windows events may store usernames in different fields    | Used `SubjectUserName`, `TargetUserName`, and Sysmon `User` fallback | Better user attribution                   |
-| Event codes may appear as different data types            | Normalized event codes before matching                               | More reliable login event detection       |
-| UTC timestamps may not match local analyst interpretation | Converted timestamps for local interpretation where needed           | Better alignment with real activity time  |
-| Sysmon action names may include additional text           | Used more flexible matching for event actions                        | More realistic process counts             |
-| Some file extensions generate noisy activity              | Refined suspicious file logic                                        | Reduced misleading suspicious file counts |
-| Some windows may become empty if parsing fails            | Improved attribution and event parsing                               | More useful behavioral variation          |
+Important field sources include:
 
-These design decisions are part of the dataset-builder contribution because they transform raw logs into stable behavior windows suitable for anomaly detection.
+```text
+winlog.event_data.SubjectUserName
+winlog.event_data.TargetUserName
+winlog.event_data.User
+winlog.event_data.Image
+winlog.event_data.ParentImage
+winlog.event_data.TargetFilename
+event.code
+event.action
+host.name
+@timestamp
+```
+
+This allows the feature engineering layer to capture authentication activity, process execution, PowerShell/CMD activity, and file creation events from the raw telemetry.
 
 ---
 
@@ -296,8 +349,8 @@ The goal is not to classify known attacks directly. Instead, the model learns th
 `train_model.py` performs the following steps:
 
 1. Load `behavior_dataset.csv`.
-2. Select the most recent training window.
-3. Remove known previous final anomalies from the temporary training dataframe.
+2. Select the configured training window.
+3. Exclude previously detected final anomalies from the temporary training dataframe.
 4. Fit a `StandardScaler`.
 5. Train Isolation Forest.
 6. Train Local Outlier Factor.
@@ -328,18 +381,16 @@ file_creation_count = hundreds
 
 Scaling prevents large numeric features from dominating the model.
 
-## 9.3 Final Models
+## 9.3 Detection Models
 
-The final ensemble uses:
+The final anomaly detection ensemble uses:
 
 | Model                | Purpose                              |
 | -------------------- | ------------------------------------ |
 | Isolation Forest     | Detects global outliers              |
 | Local Outlier Factor | Detects local density-based outliers |
 
-One-Class SVM was tested but removed because it produced too many anomaly flags and increased alert noise.
-
-## 9.4 Detection
+## 9.4 Detection Output
 
 `detect_anomaly.py` loads the latest model artifact and scores behavior rows.
 
@@ -365,14 +416,24 @@ detection_reason
 severity
 ```
 
-The strongest alerts are rows where both models agree:
+## 9.5 Strict SOC Final Decision Layer
+
+After ML scoring, the system applies a stricter SOC-oriented final decision layer.
+
+A behavior window is promoted to:
 
 ```text
-if_anomaly = 1
-lof_anomaly = 1
-ensemble_votes = 2
 final_anomaly = 1
 ```
+
+only if one of the following conditions is met:
+
+1. Isolation Forest and LOF both agree, and the row has enough priority/security context.
+2. At least one model flags the row, and the row contains strong security evidence.
+
+Strong security evidence includes failed-login bursts, suspicious file creation, shell-heavy execution, combined CMD/PowerShell activity, or suspicious parent-process behavior.
+
+This layer reduces weak single-model anomaly promotion, especially single-model statistical deviations that do not contain strong security evidence.
 
 ---
 
@@ -466,16 +527,16 @@ The stable document ID prevents duplicate anomaly records and duplicate alerts.
 
 n8n provides the automated notification layer.
 
-The workflow receives a JSON batch from Python and generates a SOC-style HTML email summary.
+The workflow receives a JSON batch from Python and generates a SOC-style HTML summary.
 
 ## 12.1 Workflow Nodes
 
-| Node        | Purpose                                                 |
-| ----------- | ------------------------------------------------------- |
-| Webhook     | Receives anomaly batch                                  |
-| AI Agent    | Converts JSON anomaly batch into SOC-style HTML summary |
-| Edit Fields | Cleans the HTML output                                  |
-| Gmail       | Sends the final SOC alert email                         |
+| Node             | Purpose                                                 |
+| ---------------- | ------------------------------------------------------- |
+| Webhook          | Receives anomaly batch                                  |
+| AI Agent         | Converts JSON anomaly batch into SOC-style HTML summary |
+| Edit Fields      | Cleans the HTML output                                  |
+| Email/Gmail node | Sends the final SOC alert email                         |
 
 ## 12.2 Prompt Safety
 
@@ -509,34 +570,61 @@ scripts/trigger_ueba_anomaly.bat
 
 ## 13.1 Simulated Behavior
 
-The script generates:
+The validation script generates five scenarios separated by 12-minute waiting periods:
 
-| Behavior                                            | Purpose                                    |
-| --------------------------------------------------- | ------------------------------------------ |
-| Temporary local user                                | Supports authentication testing            |
-| Failed authentication attempts                      | Tests failed-login features                |
-| Suspicious `.bat`, `.ps1`, `.cmd`, and `.exe` files | Tests suspicious file creation             |
-| Repeated CMD execution                              | Tests command-line activity                |
-| Repeated PowerShell execution                       | Tests scripting behavior                   |
-| Extra text files                                    | Tests file creation volume                 |
-| Cleanup                                             | Removes temporary files and temporary user |
+| Scenario | Behavior                      | Purpose                                        |
+| -------- | ----------------------------- | ---------------------------------------------- |
+| 1        | Failed-login burst            | Tests failed authentication behavior           |
+| 2        | Suspicious file creation      | Tests script/executable file creation features |
+| 3        | CMD execution burst           | Tests command-line execution behavior          |
+| 4        | PowerShell execution burst    | Tests scripting behavior                       |
+| 5        | Mixed shell and file activity | Tests combined suspicious behavior             |
+
+The 12-minute separation is intentional because the dataset builder aggregates events into 10-minute user-host behavior windows. Separating the scenarios produces cleaner validation windows and avoids mixing all behaviors into one window.
 
 ## 13.2 Expected Feature Impact
 
-| Feature                          | Expected effect |
-| -------------------------------- | --------------- |
-| `failed_login_count`             | Increase        |
-| `failed_success_ratio`           | Increase        |
-| `process_creation_count`         | Increase        |
-| `powershell_exec_count`          | Increase        |
-| `cmd_exec_count`                 | Increase        |
-| `shell_ratio`                    | Increase        |
-| `file_creation_count`            | Increase        |
-| `suspicious_file_creation_count` | Increase        |
+| Scenario                      | Expected feature impact                                                                                           |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Failed-login burst            | `failed_login_count`, `failed_success_ratio`                                                                      |
+| Suspicious file creation      | `file_creation_count`, `suspicious_file_creation_count`                                                           |
+| CMD execution burst           | `cmd_exec_count`, `process_creation_count`, `shell_ratio`                                                         |
+| PowerShell execution burst    | `powershell_exec_count`, `process_creation_count`, `shell_ratio`                                                  |
+| Mixed shell and file activity | `cmd_exec_count`, `powershell_exec_count`, `file_creation_count`, `suspicious_file_creation_count`, `shell_ratio` |
 
-## 13.3 Validation Meaning
+## 13.3 Final Controlled Replay Results
 
-The controlled replay test is not a real attack and is not a full labeled benchmark. It is a practical validation test showing that the pipeline can detect suspicious-looking behavior generated after training and convert it into an enriched alert.
+The final evaluation contained:
+
+| Metric                           |  Value |
+| -------------------------------- | -----: |
+| Total behavior windows           |    472 |
+| Final anomalies                  |    114 |
+| Anomaly rate                     | 24.15% |
+| Normal windows                   |    358 |
+| Model vote high priority         |    100 |
+| Security rule model supported    |     14 |
+| Isolation Forest flagged windows |    116 |
+| LOF flagged windows              |    300 |
+| IF + LOF agreement windows       |    116 |
+| LOF-only flagged windows         |    184 |
+
+Controlled replay scenario outcomes:
+
+| Scenario                              | Result                    | Main Evidence                                                                                                              |
+| ------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Failed-login burst                    | Detected                  | `failed_login_count = 15`, `security_rule_model_supported`                                                                 |
+| CMD-only burst                        | LOF flagged, not promoted | `cmd_exec_count = 60`, single-model evidence only                                                                          |
+| PowerShell + suspicious file creation | Detected                  | `powershell_exec_count = 120`, `file_creation_count = 60`, `suspicious_file_creation_count = 60`                           |
+| Mixed shell + file activity           | Detected                  | `cmd_exec_count = 200`, `powershell_exec_count = 100`, `file_creation_count = 200`, `suspicious_file_creation_count = 200` |
+
+The CMD-only scenario was flagged by LOF but was not promoted to a final anomaly. This shows that the strict SOC decision layer does not blindly promote every single-model deviation. Instead, final anomalies require either high-priority IF–LOF agreement or model-supported security evidence.
+
+## 13.4 Validation Meaning
+
+The controlled replay test is not a real attack and is not a full labeled benchmark. It is a practical validation test showing that the pipeline can detect suspicious-looking behavior generated after training and convert it into enriched alert records.
+
+Because the dataset is unlabeled, the evaluation does not claim precision, recall, F1-score, or attack-classification accuracy.
 
 ---
 
@@ -561,11 +649,11 @@ docs/automation_setup.md
 | Script                               | Purpose                                                     |
 | ------------------------------------ | ----------------------------------------------------------- |
 | `start_docker_desktop.bat`           | Starts Docker Desktop and n8n                               |
-| `start_ubuntu_server_vm.bat`         | Starts Ubuntu SIEM VM                                       |
+| `start_ubuntu_server_vm.bat`         | Starts the SIEM VM                                          |
 | `training_pipeline_every_3_days.bat` | Runs feature engineering and model training                 |
 | `daily_detection_pipeline.bat`       | Runs feature engineering, detection, extraction, and export |
-| `backup_ueba_project.bat`           | Creates backups of important project outputs                |
-| `shutdown_ubuntu_server_vm.bat`      | Shuts down Ubuntu VM safely through SSH                     |
+| `backup_ueba_project.bat`            | Creates backups of important project outputs                |
+| `shutdown_ubuntu_server_vm.bat`      | Shuts down the SIEM VM safely through SSH                   |
 | `stop_n8n_container.bat`             | Stops only the n8n container                                |
 
 ## 14.2 Scheduled Plan
@@ -573,11 +661,11 @@ docs/automation_setup.md
 | Time    | Script                               | Frequency      | Purpose                       |
 | ------- | ------------------------------------ | -------------- | ----------------------------- |
 | 7:45 PM | `start_docker_desktop.bat`           | Daily          | Starts Docker Desktop and n8n |
-| 8:00 PM | `start_ubuntu_server_vm.bat`         | Daily          | Starts Ubuntu SIEM VM         |
+| 8:00 PM | `start_ubuntu_server_vm.bat`         | Daily          | Starts the SIEM VM            |
 | 8:10 PM | `training_pipeline_every_3_days.bat` | Every 3 days   | Retrains the ML model         |
 | 8:40 PM | `daily_detection_pipeline.bat`       | Daily          | Runs detection and alerting   |
-| 9:00 PM | `backup_ueba_project.bat`           | Daily          | Backs up outputs              |
-| 9:15 PM | `shutdown_ubuntu_server_vm.bat`      | Daily          | Safely shuts down Ubuntu VM   |
+| 9:00 PM | `backup_ueba_project.bat`            | Daily          | Backs up outputs              |
+| 9:15 PM | `shutdown_ubuntu_server_vm.bat`      | Daily          | Safely shuts down the SIEM VM |
 | 9:30 PM | `stop_n8n_container.bat`             | Optional daily | Stops n8n container           |
 
 ## 14.3 Task Scheduler Design
@@ -593,7 +681,7 @@ Run task as soon as possible after a scheduled start is missed
 Start in: C:\Scripts
 ```
 
-For Docker Desktop and VMware startup tasks, the workflow uses:
+For Docker Desktop and VM startup tasks, the workflow may use:
 
 ```text
 Run only when user is logged on
@@ -612,14 +700,13 @@ The public repository is organized as a reproducibility package rather than a ra
 ```text
 configs/      Reusable Winlogbeat, Logstash, and n8n templates
 docs/         Full documentation and methodology walkthrough
-examples/     Small sanitized sample outputs
 scripts/      Windows automation and validation scripts
 src/          Source code for data collection, preprocessing, training, detection, and ingestion
 ```
 
 ## 15.2 Reproducibility Approach
 
-The repository provides the architecture, code structure, configuration templates, documentation, and sample outputs needed to understand and rebuild the system.
+The repository provides the architecture, code structure, configuration templates, documentation, and scripts needed to understand and rebuild the system.
 
 Environment-specific values are represented with placeholders so that readers can adapt the project to their own lab environment.
 
@@ -675,7 +762,7 @@ The private `config.py` contains the operator’s local runtime values.
 
 ## 16.3 Certificate Verification
 
-The lab version may use relaxed certificate verification for local Elasticsearch testing. In a production deployment, certificate verification should be enabled and the Elasticsearch CA certificate should be configured properly.
+A local lab deployment may use relaxed certificate verification for Elasticsearch testing. In a production deployment, certificate verification should be enabled and the Elasticsearch CA certificate should be configured properly.
 
 ---
 
@@ -686,12 +773,30 @@ The project was evaluated through:
 | Evaluation method            | Purpose                                                  |
 | ---------------------------- | -------------------------------------------------------- |
 | Manual anomaly review        | Check whether detected rows make security sense          |
-| Model agreement              | Check whether both models flag the same behavior         |
-| Model comparison             | Compare IF, LOF, and removed One-Class SVM               |
+| Model agreement analysis     | Check whether both models flag the same behavior         |
 | Controlled replay validation | Verify detection of generated abnormal behavior          |
 | SOC enrichment review        | Confirm that alerts contain useful investigation context |
 
 This is not a full ground-truth accuracy evaluation. True precision, recall, and F1-score require a larger labeled dataset.
+
+## 17.1 Final Result Summary
+
+The final controlled replay evaluation produced:
+
+```text
+Total behavior windows: 472
+Final anomalies: 114
+Anomaly rate: 24.15%
+Normal windows: 358
+Model vote high priority: 100
+Security rule model supported: 14
+Isolation Forest flagged windows: 116
+LOF flagged windows: 300
+IF + LOF agreement windows: 116
+LOF-only flagged windows: 184
+```
+
+The final results should be interpreted as proof-of-concept validation rather than a benchmark accuracy score.
 
 ---
 
@@ -719,7 +824,7 @@ Future improvements include:
 1. Larger multi-user and multi-host dataset.
 2. Active Directory lab deployment.
 3. Per-user and per-host baselines.
-4. 14-day or longer training windows.
+4. Longer training windows.
 5. Drift monitoring and anomaly-rate trend charts.
 6. SOC feedback loop using review statuses.
 7. More controlled simulations, including parent-child process anomalies.
@@ -733,8 +838,11 @@ Future improvements include:
 
 The final system is an end-to-end Windows Event/Sysmon UEBA anomaly detection pipeline built using Elasticsearch, Python feature engineering, unsupervised machine learning, anomaly indexing, n8n alerting, and scheduled automation.
 
-The project converts raw endpoint telemetry into behavioral windows, trains an unsupervised Isolation Forest + Local Outlier Factor ensemble, scores new behavior, enriches final anomalies with SOC investigation context, stores alert records in Elasticsearch, and sends SOC-style alerts through n8n.
+The project converts raw endpoint telemetry into behavioral windows, trains an unsupervised Isolation Forest + Local Outlier Factor ensemble, scores new behavior, applies a strict SOC-oriented final decision layer, enriches final anomalies with SOC investigation context, stores alert records in Elasticsearch, and sends SOC-style alerts through n8n.
 
 The final version goes beyond basic anomaly scoring by adding a dataset-builder layer, raw-log investigation metadata, priority scoring, top feature explanations, MITRE ATT&CK-aligned investigation context, Elasticsearch alert indexing, n8n evidence-pack alerting, controlled replay validation, and scheduled operational automation.
 
 This makes the project a reproducible local-lab prototype for automated Windows endpoint UEBA anomaly detection and SOC-oriented alerting.
+
+```
+```
