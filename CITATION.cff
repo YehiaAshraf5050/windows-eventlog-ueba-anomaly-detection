@@ -12,6 +12,7 @@ authors:
 
 url: "https://github.com/YehiaAshraf5050/windows-eventlog-ueba-anomaly-detection"
 repository-code: "https://github.com/YehiaAshraf5050/windows-eventlog-ueba-anomaly-detection"
+
 keywords:
   - "UEBA"
   - "Windows Event Logs"
