@@ -31,7 +31,7 @@ SCORING_MODE = "new"
 # ENRICHMENT CONFIGURATION
 # ==============================================================================
 
-RAW_INDEX_NAME = "winlogbeat-nileuniversity"
+RAW_INDEX_NAME = "winlogbeat-whatever"
 WINDOW_SIZE_MINUTES = 10
 
 # These rules do not replace the ML model.
